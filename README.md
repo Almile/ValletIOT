@@ -1,12 +1,6 @@
-Aqui vai um **README.md completo, organizado e explicativo** para esse projeto de reconhecimento de placas em vagas de estacionamento.
-
----
-
 # 🚗 Sistema de Estacionamento Inteligente com OCR (EasyOCR + OpenCV)
 
 Este projeto detecta vagas de estacionamento, identifica carros, verifica se estão parados e realiza a **leitura automática da placa** utilizando **visão computacional e OCR**.
-
-Ideal para protótipos de sistemas automatizados de estacionamento, TCCs e demonstrações em tempo real.
 
 ---
 
@@ -26,7 +20,7 @@ Ideal para protótipos de sistemas automatizados de estacionamento, TCCs e demon
 
 ```
 📂 projeto-estacionamento/
-├── main.py               # Código principal do sistema
+├── estacionamento.py               # Código principal do sistema
 ├── requirements.txt      # Dependências do projeto
 └── README.md             # Documentação
 ```
@@ -35,7 +29,7 @@ Ideal para protótipos de sistemas automatizados de estacionamento, TCCs e demon
 
 ## 📦 Instalação
 
-### ✅ 1. Clone o projeto (ou copie os arquivos)
+### ✅ 1. Clone o projeto
 
 ```bash
 git clone https://github.com/almile/ValletIOT.git
@@ -113,13 +107,4 @@ Antes de enviar a imagem para OCR:
 * Aumento de contraste com `CLAHE`
 * EasyOCR tenta ler somente letras e números
 
----
 
-## ✅ Resultados Esperados no Console
-
-```
-🚗 CARRO ENTROU na Vaga 1
-🅿️  CARRO PAROU na Vaga 1 - Lendo placa...
-✅ PLACA IDENTIFICADA - Vaga 1: ABC1D23
-🚗 CARRO SAIU - Placa ABC1D23 saiu da Vaga 1
-```
