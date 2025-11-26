@@ -9,9 +9,11 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 # --- CONFIGURAÇÃO FIREBASE ---
 try:
+    # Tenta carregar as credenciais do Firebase
     cred = credentials.Certificate("./firebase_key.json")
     firebase_admin.initialize_app(cred)
 except ValueError:
+    # Ignora se o app já foi inicializado (comum em ambientes de notebook)
     pass
 except Exception as e:
     print(f"⚠️ Erro ao inicializar Firebase Admin SDK: {e}")
@@ -20,39 +22,54 @@ except Exception as e:
 db = firestore.client()
 
 # --- CONFIGURAÇÃO OCR E VAGAS ---
-reader = easyocr.Reader(['en'])
+reader = easyocr.Reader(['en', 'pt']) # Adicionando português para placas Mercosul
 
-# Resolução desejada para a câmera
-CAMERA_WIDTH = 1280
-CAMERA_HEIGHT = 720
+# Resolução desejada para a câmera (REDUZIDA para 800x450)
+CAMERA_WIDTH = 800
+CAMERA_HEIGHT = 450
 
+# Coordenadas relativas das vagas (AJUSTADAS com espaçamento de 50 entre vagas e aumento de 20 em cada vaga)
+# Ajuste: cada vaga aumentada em 20 e espaçamento de 50 entre elas
 VAGAS_RELATIVAS = [
+    # Vaga 1: Aumentada em 20 e com espaçamento
     {
-        "vaga": 1, 
-        "coords_rel": (100, 200, 350, 600),
-        "area_placa_rel": (100, 400, 350, 600),
+        "vaga": "A1", 
+        "coords_rel": (50, 300, 270, 950),  # Aumentada de 200 para 220 (200+20) na largura
+        "area_placa_rel": (50, 700, 270, 950),
          "id_estacionamento": "OzBB12ZThIzzsD0JWZmI", 
-        "id_vaga_firestore": "A1"
+        "id_vaga_firestore": "Ls6mqldsHpQ6Gdb2hZ5x"
     },
+    # Vaga 2: Aumentada em 20 e com espaçamento de 50 da anterior
     {
-        "vaga": 2, 
-        "coords_rel": (400, 200, 650, 600),
-        "area_placa_rel": (400, 400, 650, 600),
+        "vaga": "B1", 
+        "coords_rel": (320, 300, 540, 950),  # 270 + 50 = 320, aumentada para 220 de largura
+        "area_placa_rel": (320, 700, 540, 950),
         "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "B1"
+        "id_vaga_firestore": "gv3ZxbC6OCldonAi6nhn"
     },
+    # Vaga 3: Aumentada em 20 e com espaçamento de 50 da anterior
     {
-        "vaga": 3, 
-        "coords_rel": (700, 200, 950, 600),
-        "area_placa_rel": (700, 400, 950, 600),
+        "vaga": "c1", 
+        "coords_rel": (590, 300, 810, 950),  # 540 + 50 = 590, aumentada para 220 de largura
+        "area_placa_rel": (590, 700, 810, 950),
         "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "C1"
+        "id_vaga_firestore": "VJZpS5OHwTv3nRjZbF7r"
+    },
+    # Vaga 4: Aumentada em 20 e com espaçamento de 50 da anterior
+    {
+        "vaga": 4, 
+        "coords_rel": (860, 300, 950, 950),  # 810 + 50 = 860, ajustada para caber na tela
+        "area_placa_rel": (860, 700, 950, 950),
+        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
+        "id_vaga_firestore": "D1"
     }
 ]
+
 
 def map_coords(coords_rel, width, height):
     x1_rel, y1_rel, x2_rel, y2_rel = coords_rel
     
+    # A lógica original de mapeamento (dividir por 1000) está correta para coordenadas relativas
     x1 = int(x1_rel * width / 1000)
     y1 = int(y1_rel * height / 1000)
     x2 = int(x2_rel * width / 1000)
@@ -78,10 +95,12 @@ for vaga in vagas_map:
         "frames_sem_movimento": 0,
         "carro_detectado_atual": None,
         "ultima_placa_lida": None,
-        "notificacao_enviada": False
+        "notificacao_enviada": False,
+        "confianca_placa_atual": 0.0 # Novo campo para armazenar a confiança da placa atual
     })
 
 cap = cv2.VideoCapture(0)
+# Tenta definir a resolução da câmera
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
@@ -167,92 +186,240 @@ def preprocessar_placa(imagem_placa):
     return contrastada
 
 def ler_placa_da_vaga(vaga, frame):
-    tempo_atual = time.time()
-    
-    if tempo_atual - vaga["ultima_leitura"] < 3.0:
-        return None
-    
+    """
+    Realiza a leitura da placa na área definida da vaga.
+    Retorna a placa lida e o nível de confiança (score) do EasyOCR.
+    A restrição de tempo foi removida para permitir leitura contínua.
+    """
     ax1, ay1, ax2, ay2 = vaga["area_placa"]
     area_placa = frame[ay1:ay2, ax1:ax2]
     
     if area_placa.size == 0:
-        return None
+        return None, 0.0
     
     try:
+        # O EasyOCR retorna [bbox, texto, confianca]
         resultados = reader.readtext(
             preprocessar_placa(area_placa),
-            detail=0,
+            detail=1, # Mudar para detail=1 para obter a confiança
             paragraph=False,
             allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-            batch_size=1,
-            text_threshold=0.4,
-            low_text=0.3
+            # Removendo batch_size=1 para evitar overhead em leituras sequenciais
+            text_threshold=0.5, # Aumentando um pouco o threshold para focar em leituras mais claras
+            low_text=0.4 # Aumentando um pouco o low_text para ser mais tolerante a caracteres individuais
         )
         
-        placas_validas = []
-        for texto in resultados:
+        # Lista para armazenar placas válidas e seus scores
+        placas_candidatas = []
+        
+        for (bbox, texto, confianca) in resultados:
             texto_limpo = ''.join(c for c in texto.upper() if c.isalnum())
             
+            # A validação de formato estrita pode estar impedindo a leitura.
+            # Voltando à validação original do usuário (6 a 8 caracteres, com letras e números)
             if 6 <= len(texto_limpo) <= 8:
                 tem_letras = any(c.isalpha() for c in texto_limpo)
                 tem_numeros = any(c.isdigit() for c in texto_limpo)
                 
                 if tem_letras and tem_numeros:
-                    placas_validas.append(texto_limpo)
+                    # Se a placa for lida, ela é uma candidata.
+                    placas_candidatas.append((texto_limpo, confianca))
+
+
         
-        if placas_validas:
-            from collections import Counter
-            contador = Counter(placas_validas)
-            melhor_placa, count = contador.most_common(1)[0]
+        if placas_candidatas:
+            # Seleciona a placa com a maior confiança
+            melhor_placa, maior_confianca = max(placas_candidatas, key=lambda item: item[1])
             
-            vaga["ultima_leitura"] = tempo_atual
-            return melhor_placa
+            return melhor_placa, maior_confianca
                     
     except Exception as e:
-        print(f"Erro OCR na vaga {vaga['vaga']}: {e}")
+        # print(f"Erro OCR na vaga {vaga['vaga']}: {e}") # Comentado para evitar spam no console
+        pass
     
-    vaga["ultima_leitura"] = tempo_atual
-    return None
+    return None, 0.0
 
-# --- FUNÇÕES FIREBASE E NOTIFICAÇÃO (ADAPTADAS) ---
+
+    # Importe a função enviar_notificacao e as dependências necessárias
+# from seu_modulo_de_notificacao import enviar_notificacao
+
+def disparar_evento_estacionamento(token_fcm_usuario: str, titulo: str, corpo: str, dados: dict = None):
+    """
+    Dispara o evento de estacionamento enviando uma mensagem de dados via FCM
+    """
+    if not token_fcm_usuario:
+        print("❌ Token de dispositivo vazio/inválido")
+        return False
+
+    print(f"🚀 Disparando evento de estacionamento para token: {token_fcm_usuario[:10]}...")
+    
+    # 🔥 LOG DOS DADOS QUE ESTÃO SENDO ENVIADOS
+    if dados:
+        print(f"📦 Dados que serão enviados:")
+        for key, value in dados.items():
+            print(f"   {key}: {value}")
+
+    # A função enviar_notificacao deve ser definida ou importada
+    # Como não está definida no código original, vamos assumir que ela existe
+    # e apenas logar a chamada para evitar erro de NameError.
+    # Se o usuário precisar da funcionalidade, ele deve garantir que a função esteja disponível.
+    try:
+        sucesso = enviar_notificacao(
+            token_dispositivo=token_fcm_usuario,
+            titulo=titulo,
+            corpo=corpo,
+            dados=dados
+        )
+    except NameError:
+        print("⚠️  Função 'enviar_notificacao' não definida. Pulando envio de notificação.")
+        sucesso = False
+
+
+    if sucesso:
+        print("✅ Evento de estacionamento disparado com sucesso via FCM.")
+    else:
+        print("❌ Falha ao disparar evento de estacionamento via FCM.")
+    
+    return sucesso
 
 def enviar_notificacao(token_dispositivo, titulo, corpo, dados=None):
-    """Envia notificação via FCM para um token específico."""
     try:
+        if not token_dispositivo:
+            print("❌ Token de dispositivo vazio/inválido")
+            return False
+
+        print(f"📤 Enviando notificação para token: {token_dispositivo[:10]}...")
+
+        # Firebase Admin SDK v7+ requires data to be strings
+        safe_dados = {k: str(v) for k, v in (dados or {}).items()}
+
+        # DATA ONLY MESSAGE
         message = messaging.Message(
-            notification=messaging.Notification(
-                title=titulo,
-                body=corpo,
-            ),
-            data=dados,
+            data={
+                "title": titulo,
+                "body": corpo,
+                **safe_dados
+            },
             token=token_dispositivo,
         )
+
         response = messaging.send(message)
         print(f"✅ Notificação enviada com sucesso: {response}")
+        return True
+
+    except messaging.UnregisteredError as e:
+        print(f"❌ Token FCM inválido ou expirado: {e}")
+        return False
+    except ValueError as e:
+        print(f"❌ Token FCM mal formatado: {e}")
+        return False
+    except firebase_admin.exceptions.FirebaseError as e:
+        print(f"❌ Erro do Firebase: {e}")
+        return False
     except Exception as e:
-        print(f"❌ Erro ao enviar notificação: {e}")
+        print(f"❌ Erro geral ao enviar notificação: {e}")
+        return False
+
+    
+        
+def remover_token_invalido(placa):
+    try:
+        veiculo_doc = db.collection('veiculo').document(placa).get()
+        if not veiculo_doc.exists:
+            return
+            
+        usuario_email = veiculo_doc.get('usuarioEmail')
+        if not usuario_email:
+            return
+            
+        usuarios_ref = db.collection('usuario').where(filter=FieldFilter('email', '==', usuario_email)).limit(1).get()
+        
+        if usuarios_ref:
+            usuario_doc = usuarios_ref[0]
+            usuario_ref = db.collection('usuario').document(usuario_doc.id)
+            usuario_ref.update({'fcm_token': firestore.DELETE_FIELD})
+            print(f"🗑️  Token FCM inválido removido para {usuario_email}")
+            
+    except Exception as e:
+        print(f"Erro ao remover token inválido: {e}")
 
 def buscar_token_motorista(placa):
     """Busca o token FCM do motorista pela placa do carro (Coleção 'veiculo')."""
     try:
+        print(f"🔍 Buscando token para placa: {placa}")
+        
+        # Busca o veículo pela placa
         veiculo_doc = db.collection('veiculo').document(placa).get()
         if not veiculo_doc.exists:
+            print(f"❌ Veículo com placa {placa} não encontrado")
             return None, None
         
         usuario_email = veiculo_doc.get('usuarioEmail')
-        
-        usuario_ref = db.collection('usuario').where('email', '==', usuario_email).limit(1).get()
-        if not usuario_ref:
+        if not usuario_email:
+            print(f"❌ Email do usuário não encontrado para placa {placa}")
             return None, None
             
-        usuario_doc = usuario_ref[0]
+        print(f"📧 Email do usuário: {usuario_email}")
+
+        # Busca o usuário pelo email
+        usuarios_ref = db.collection('usuario').where(filter=FieldFilter('email', '==', usuario_email)).limit(1).get()
+        
+        if not usuarios_ref:
+            print(f"❌ Usuário com email {usuario_email} não encontrado")
+            return None, None
+            
+        usuario_doc = usuarios_ref[0]
+        usuario_data = usuario_doc.to_dict()
+        
+        # Verifica se o campo fcm_token existe no documento
+        if 'fcm_token' not in usuario_data:
+            print(f"⚠️  Campo 'fcm_token' não encontrado no documento do usuário")
+            return None, usuario_doc.id
+            
+        token = usuario_data.get('fcm_token')
         uid_motorista = usuario_doc.id
         
-        return usuario_doc.get('fcm_token'), uid_motorista
+        if not token:
+            print(f"❌ Token FCM vazio para usuário {usuario_email}")
+            return None, uid_motorista
+            
+        print(f"✅ Token encontrado: {token[:10]}...")
+        return token, uid_motorista
         
     except Exception as e:
-        print(f"Erro ao buscar token do motorista: {e}")
+        print(f"❌ Erro ao buscar token do motorista: {e}")
         return None, None
+
+def gerar_token_para_usuario_existente(usuario_email):
+    """
+    Gera um token FCM para um usuário existente que não tem token.
+    Esta função deve ser chamada manualmente para usuários que já existem no sistema.
+    """
+    try:
+        print(f"🔄 Gerando token FCM para usuário existente: {usuario_email}")
+        
+        # Busca o usuário pelo email
+        usuarios_ref = db.collection('usuario').where(filter=FieldFilter('email', '==', usuario_email)).limit(1).get()
+        
+        if not usuarios_ref:
+            print(f"❌ Usuário com email {usuario_email} não encontrado")
+            return False
+            
+        usuario_doc = usuarios_ref[0]
+        usuario_id = usuario_doc.id
+        
+        # Aqui você precisaria de uma forma de gerar um token FCM
+        # Como não podemos gerar tokens do lado do servidor, esta é uma solução temporária
+        # O token real deve ser gerado pelo app móvel
+        
+        print(f"⚠️  Token FCM não pode ser gerado automaticamente.")
+        print(f"📱 O usuário {usuario_email} precisa fazer login no app móvel para gerar o token.")
+        
+        return False
+        
+    except Exception as e:
+        print(f"❌ Erro ao gerar token para usuário existente: {e}")
+        return False    
 
 def buscar_token_admin(id_estacionamento):
     """Busca o token FCM do administrador pelo ID do estacionamento."""
@@ -293,8 +460,6 @@ def atualizar_vaga_firestore(vaga, placa=None, ocupada=None, status=None):
             update_data['status'] = status if status is not None else 'LIVRE'
             
             vaga_ref.set(update_data, merge=True)
-            print(f"✅ Firestore: Vaga {vaga['vaga']} CRIADA/ATUALIZADA com sucesso.")
-            return True
         
         if update_data:
             vaga_ref.set(update_data, merge=True)
@@ -314,9 +479,9 @@ def verificar_reserva(uid_motorista, id_vaga_firestore):
         # Assumindo que a reserva está na coleção 'reserva'
         # Filtra por usuarioId e vagaId
         reserva_ref = db.collection('reserva')\
-            .where('usuarioId', '==', uid_motorista)\
-            .where('vagaId', '==', id_vaga_firestore)\
-            .where('status', '==', 'ativa')\
+            .where(filter=FieldFilter('usuarioId', '==', uid_motorista))\
+            .where(filter=FieldFilter('vagaId', '==', id_vaga_firestore))\
+            .where(filter=FieldFilter('status', '==', 'ativa'))\
             .limit(1).get()
         # CORREÇÃO: Usa len() para verificar se a lista de resultados não está vazia
         return len(reserva_ref) > 0
@@ -324,7 +489,32 @@ def verificar_reserva(uid_motorista, id_vaga_firestore):
         print(f"Erro ao verificar reserva: {e}")
         return False
 
-# --- FUNÇÃO PRINCIPAL DE PROCESSAMENTO (MANTIDA) ---
+# --- FUNÇÃO PRINCIPAL DE PROCESSAMENTO (MODIFICADA) ---
+
+def tratar_placa(placa_bruta):
+    """
+    Trata a placa para garantir que tenha 7 caracteres, 3 letras e 4 caracteres restantes.
+    Prioriza a placa bruta se já estiver no formato.
+    """
+    placa_limpa = ''.join(c for c in placa_bruta.upper() if c.isalnum())
+    
+    # 1. Tenta o formato Mercosul (LLLNLNN) ou antigo (LLLNNNN)
+    if len(placa_limpa) == 7:
+        letras = sum(1 for c in placa_limpa if c.isalpha())
+        if letras == 3:
+            return placa_limpa
+            
+    # 2. Tenta truncar para 7 caracteres se for maior
+    if len(placa_limpa) > 7:
+        placa_truncada = placa_limpa[:7]
+        letras = sum(1 for c in placa_truncada if c.isalpha())
+        if letras == 3:
+            return placa_truncada
+            
+    # 3. Tenta preencher com 'X' ou '0' se for menor (último recurso)
+    # Isso é arriscado, mas pode ser necessário se o OCR falhar.
+    # Vamos apenas retornar a placa bruta se não for possível tratar com segurança.
+    return placa_bruta
 
 def processar_vaga(vaga, carro_atual, frame_original):
     """Lógica central de detecção, leitura e comunicação com o Firebase."""
@@ -340,6 +530,7 @@ def processar_vaga(vaga, carro_atual, frame_original):
         vaga["historico_posicoes"].clear()
         vaga["frames_sem_movimento"] = 0
         vaga["notificacao_enviada"] = False
+        vaga["confianca_placa_atual"] = 0.0 # Reseta a confiança
         print(f"🚗 CARRO ENTROU na Vaga {vaga['vaga']}")
         
         # Atualiza Firestore: Ocupada
@@ -355,6 +546,7 @@ def processar_vaga(vaga, carro_atual, frame_original):
         vaga["frames_sem_movimento"] = 0
         vaga["ultima_leitura"] = 0
         vaga["notificacao_enviada"] = False
+        vaga["confianca_placa_atual"] = 0.0 # Reseta a confiança
         
         if placa_antiga:
             print(f"🚗 CARRO SAIU - Placa {placa_antiga} saiu da Vaga {vaga['vaga']}")
@@ -362,7 +554,7 @@ def processar_vaga(vaga, carro_atual, frame_original):
             print(f"🚗 CARRO SAIU da Vaga {vaga['vaga']}")
             
         # Atualiza Firestore: Livre
-        atualizar_vaga_firestore(vaga, placa=None, ocupada=False, status='LIVRE')
+        atualizar_vaga_firestore(vaga, ocupada=False, status='LIVRE', placa=None)
         
     # 3. CARRO ESTÁ NA VAGA
     elif vaga_esta_ocupada and vaga["ocupada"]:
@@ -370,85 +562,171 @@ def processar_vaga(vaga, carro_atual, frame_original):
         
         if carro_parado and not vaga["carro_parado"]:
             vaga["carro_parado"] = True
-            vaga["ultima_leitura"] = 0
-            print(f"🅿️  CARRO PAROU na Vaga {vaga['vaga']} - Lendo placa...")
+            vaga["confianca_placa_atual"] = 0.0 # Reseta a confiança ao parar
+            print(f"🅿️  CARRO PAROU na Vaga {vaga['vaga']} - Iniciando leitura contínua...")
         
         elif not carro_parado and vaga["carro_parado"]:
             vaga["carro_parado"] = False
             print(f"🚗 CARRO EM MOVIMENTO na Vaga {vaga['vaga']}")
             
+        # A leitura da placa deve ocorrer em todo frame que o carro estiver parado
         if vaga["carro_parado"]:
-            placa = ler_placa_da_vaga(vaga, frame_original)
+            placa_lida, confianca = ler_placa_da_vaga(vaga, frame_original)
             
-            if placa and vaga["placa_atual"] != placa:
-                vaga["placa_atual"] = placa
-                vaga["ultima_placa_lida"] = placa
-                print(f"✅ PLACA IDENTIFICADA - Vaga {vaga['vaga']}: {placa}")
+            # Condição para aceitar a nova placa:
+            # 1. Uma placa foi lida (placa_lida é diferente de None)
+            # 2. A confiança da leitura é maior que a confiança da placa atual registrada
+            
+            # Se uma placa foi lida e a confiança é maior que a confiança atual
+            if placa_lida and confianca > vaga.get("confianca_placa_atual", 0.0):
                 
-                atualizar_vaga_firestore(vaga, placa=placa)
+                # A placa lida é a nova melhor placa
+                # Trata a placa antes de atualizar o Firestore
+                placa_tratada = tratar_placa(placa_lida)
                 
+                vaga["placa_atual"] = placa_tratada
+                vaga["confianca_placa_atual"] = confianca
+                vaga["ultima_placa_lida"] = placa_lida # Mantém a placa lida bruta para debug
+                
+                print(f"✅ PLACA ATUALIZADA - Vaga {vaga['vaga']}: {placa_tratada} (Confiança: {confianca:.2f})")
+                
+                # Atualiza o Firestore com a melhor placa lida até o momento
+                atualizar_vaga_firestore(vaga, placa=placa_tratada)
+                
+                # Envia notificação apenas na primeira vez que uma placa válida é lida
                 if not vaga["notificacao_enviada"]:
-                    token_motorista, uid_motorista = buscar_token_motorista(placa)
-                    token_admin = buscar_token_admin(vaga['id_estacionamento'])
-                    
-                    # Notificação para o Motorista
-                    if token_motorista:
-                        titulo = "Seu veículo foi estacionado!"
-                        corpo = f"Sua placa {placa} foi identificada na Vaga {vaga['vaga']}."
-                        enviar_notificacao(token_motorista, titulo, corpo, {'vaga': str(vaga['vaga']), 'placa': placa})
-                    
-                    # Notificação para o Administrador (se for reserva)
-                    if token_admin and uid_motorista and verificar_reserva(uid_motorista, vaga['id_vaga_firestore']):
-                        titulo = "Reserva Confirmada"
-                        corpo = f"O veículo reservado entrou na Vaga {vaga['vaga']}."
-                        enviar_notificacao(token_admin, titulo, corpo, {'vaga': str(vaga['vaga']), 'placa': placa, 'tipo': 'reserva'})
-                        
-                    vaga["notificacao_enviada"] = True
+                    enviar_notificacoes(vaga, placa_tratada)
 
-
-# --- FUNÇÃO DE RELEITURA MANUAL (MANTIDA) ---
-
-def releitura_manual(vaga_id):
-    """Simula a releitura forçada da vaga após saída manual do app."""
-    print(f"🔄 Releitura manual solicitada para Vaga {vaga_id}")
+def enviar_notificacoes(vaga, placa_tratada):
+    """Função separada para envio de notificações"""
+    token_motorista, uid_motorista = buscar_token_motorista(placa_tratada)
+    token_admin = buscar_token_admin(vaga['id_estacionamento'])
     
-    vaga = next((v for v in vagas_map if v["vaga"] == vaga_id), None)
-    if not vaga:
-        print(f"Vaga {vaga_id} não encontrada.")
-        return
-        
-    ret, frame = cap.read()
-    if not ret:
-        print("Falha ao capturar frame para releitura.")
-        return
-        
-    placa = ler_placa_da_vaga(vaga, frame)
+    print(f"🔔 Tentando enviar notificações para placa {placa_tratada}")
     
-    if placa:
-        print(f"⚠️ PLACA AINDA PRESENTE - Vaga {vaga_id}: {placa}")
+    # Notificação para o Motorista
+    notificacao_enviada = False
+    
+    if token_motorista and uid_motorista:
+        titulo = "Seu veículo foi estacionado!"
+        corpo = f"Sua placa {placa_tratada} foi identificada na Vaga {vaga['vaga']}."
         
-        token_motorista, uid_motorista = buscar_token_motorista(placa)
-        token_admin = buscar_token_admin(vaga['id_estacionamento'])
+        # 🔥 CORREÇÃO: Envia o ID da vaga correto (id_vaga_firestore)
+        sucesso = disparar_evento_estacionamento(
+            token_fcm_usuario=token_motorista,
+            titulo=titulo,
+            corpo=corpo,
+            dados={
+                'vagaId': vaga['id_vaga_firestore'],  # 🔥 MUDOU DE 'vaga' PARA 'vagaId'
+                'placa': placa_tratada,
+                'tipo': 'estacionamento',
+                'usuarioId': uid_motorista  # 🔥 ADICIONA O USUARIO ID
+            }
+        )
         
-        if token_admin:
-            titulo = "ALERTA: Saída Manual Incorreta"
-            corpo = f"O veículo de placa {placa} ainda está na Vaga {vaga_id} após a saída manual no app."
-            enviar_notificacao(token_admin, titulo, corpo, {'vaga': str(vaga_id), 'placa': placa, 'tipo': 'alerta'})
-            
-        atualizar_vaga_firestore(vaga, placa=placa, ocupada=True, status='OCUPADA')
-        
+        if sucesso:
+            notificacao_enviada = True
+            vaga["notificacao_enviada"] = True
+            print(f"✅ Notificação enviada com sucesso para o motorista")
+            print(f"📦 Dados enviados: vagaId={vaga['id_vaga_firestore']}, usuarioId={uid_motorista}")
+        else:
+            print(f"🔄 Token inválido detectado, removendo...")
+            remover_token_invalido(placa_tratada)
     else:
-        print(f"✅ Vaga {vaga_id} confirmada como LIVRE.")
-        atualizar_vaga_firestore(vaga, placa=None, ocupada=False, status='LIVRE')
+        print(f"⚠️  Token do motorista não encontrado para {placa_tratada}")
 
+    # Notificação para o Administrador (se for reserva)
+    if token_admin and uid_motorista:
+        tem_reserva = verificar_reserva(uid_motorista, vaga['id_vaga_firestore'])
+        if tem_reserva:
+            titulo = "Reserva Confirmada"
+            corpo = f"O veículo reservado entrou na Vaga {vaga['vaga']}."
+            
+            sucesso_admin = disparar_evento_estacionamento(
+                token_fcm_usuario=token_admin,
+                titulo=titulo,
+                corpo=corpo,
+                dados={
+                    'vagaId': vaga['id_vaga_firestore'],  # 🔥 MESMA CORREÇÃO
+                    'placa': placa_tratada, 
+                    'tipo': 'reserva',
+                    'usuarioId': uid_motorista
+                }
+            )
+            
+            if sucesso_admin:
+                print(f"✅ Notificação de reserva enviada para o administrador")
+    
+    return notificacao_enviada
 
-# --- LOOP PRINCIPAL (MANTIDO) ---
+def verificar_usuarios_sem_token():
+    """Verifica todos os usuários que não possuem token FCM"""
+    try:
+        print("🔍 Verificando usuários sem token FCM...")
+        
+        # Busca usuários onde o campo fcm_token não existe ou é nulo
+        usuarios_ref = db.collection('usuario').get()
+        
+        usuarios_sem_token = []
+        
+        for usuario in usuarios_ref:
+            usuario_data = usuario.to_dict()
+            if 'fcm_token' not in usuario_data or not usuario_data.get('fcm_token'):
+                usuarios_sem_token.append({
+                    'id': usuario.id,
+                    'email': usuario_data.get('email', 'N/A')
+                })
+        
+        if usuarios_sem_token:
+            print(f"⚠️  Encontrados {len(usuarios_sem_token)} usuários sem token FCM:")
+            for usuario in usuarios_sem_token:
+                print(f"   - {usuario['email']} (ID: {usuario['id']})")
+        else:
+            print("✅ Todos os usuários possuem token FCM")
+            
+        return usuarios_sem_token
+        
+    except Exception as e:
+        print(f"❌ Erro ao verificar usuários sem token: {e}")
+        return []
 
-print("🚗 Sistema de Estacionamento - Versão Final Corrigida V2")
+def verificar_e_atualizar_token(usuario_email, novo_token):
+    """Verifica e atualiza o token FCM do usuário"""
+    try:
+        usuarios_ref = db.collection('usuario').where(filter=FieldFilter('email', '==', usuario_email)).limit(1).get()
+        
+        if usuarios_ref:
+            usuario_doc = usuarios_ref[0]
+            usuario_ref = db.collection('usuario').document(usuario_doc.id)
+            usuario_ref.update({'fcm_token': novo_token})
+            print(f"✅ Token FCM atualizado para {usuario_email}")
+            return True
+        return False
+    except Exception as e:
+        print(f"❌ Erro ao atualizar token: {e}")
+        return False
+
+# --- LOOP PRINCIPAL (MODIFICADO) ---
+
+# Cores em BGR (OpenCV usa BGR)
+# Amarelo/Verde Escuro (Dark Yellow/Green)
+COR_LIVRE = (0, 100, 0) # Verde Escuro
+COR_OCUPADA_PARADA_PLACA = (0, 0, 150) # Vermelho Escuro (para placa lida)
+COR_OCUPADA_PARADA_LENDO = (0, 150, 255) # Laranja Escuro (para lendo placa)
+COR_OCUPADA_MOVIMENTO = (0, 200, 200) # Amarelo Escuro (para movimento)
+COR_TEXTO_CLARO = (255, 255, 255)
+COR_TEXTO_ESCURO = (0, 0, 0)
+COR_AREA_PLACA = (255, 100, 0) # Azul um pouco mais escuro
+
+print("🚗 Sistema de Estacionamento - Versão Modificada (Leitura Automática e Confiança)")
 print(f"🎥 Resolução da Câmera: {CAMERA_WIDTH}x{CAMERA_HEIGHT}")
 print("📍 Aguardando carros estacionarem...")
 
-vagas_ocupadas_simulacao = [False, False, False] 
+# Verificar usuários sem token (opcional - pode ser comentado depois)
+#verificar_usuarios_sem_token()
+
+# Simulação de detecção de carro (deve ser substituída por um modelo de ML real)
+vagas_ocupadas_simulacao = [False, False, False, False] 
 
 while True:
     ret, frame = cap.read()
@@ -456,8 +734,16 @@ while True:
         print("Erro ao ler frame da câmera.")
         break
     
+    # Centralização da Câmera:
+    # O frame lido pode ser maior ou menor que o desejado.
+    # Se for maior, cortamos o centro. Se for menor, redimensionamos.
+    # Como definimos a resolução, vamos garantir que o frame tenha o tamanho correto.
+    # Se a câmera não suportar a resolução, o frame pode ser diferente.
+    # Vamos redimensionar para garantir o tamanho.
+    frame = cv2.resize(frame, (CAMERA_WIDTH, CAMERA_HEIGHT))
     frame_original = frame.copy()
     
+    # *** IMPORTANTE: ESTA É UMA SIMULAÇÃO PARA TESTE. SUBSTITUIR POR DETECÇÃO REAL. ***
     carros_detectados = []
     for i, vaga in enumerate(vagas_map):
         if vagas_ocupadas_simulacao[i]:
@@ -468,6 +754,7 @@ while True:
             carros_detectados.append(carro)
         else:
             carros_detectados.append(None)
+    # FIM DA SIMULAÇÃO
     
     for i, vaga in enumerate(vagas_map):
         processar_vaga(vaga, carros_detectados[i], frame_original)
@@ -477,45 +764,52 @@ while True:
         ax1, ay1, ax2, ay2 = vaga["area_placa"]
         
         if not vaga["ocupada"]:
-            cor_vaga = (0, 255, 0)
+            cor_vaga = COR_LIVRE
             status = "LIVRE"
-            cor_texto = (255, 255, 255)
+            cor_texto = COR_TEXTO_CLARO
         elif vaga["carro_parado"] and vaga["placa_atual"]:
-            cor_vaga = (0, 0, 255)
-            status = vaga["placa_atual"]
-            cor_texto = (0, 255, 255)
+            cor_vaga = COR_OCUPADA_PARADA_PLACA
+            status = f"{vaga['placa_atual']} ({vaga['confianca_placa_atual']:.2f})"
+            cor_texto = COR_TEXTO_CLARO
         elif vaga["carro_parado"]:
-            cor_vaga = (0, 165, 255)
+            cor_vaga = COR_OCUPADA_PARADA_LENDO
             status = "LENDO PLACA"
-            cor_texto = (255, 255, 255)
+            cor_texto = COR_TEXTO_CLARO
         else:
-            cor_vaga = (255, 255, 0)
+            cor_vaga = COR_OCUPADA_MOVIMENTO
             status = "EM MOVIMENTO"
-            cor_texto = (0, 0, 0)
+            cor_texto = COR_TEXTO_ESCURO
         
+        # Desenha o retângulo da vaga
         cv2.rectangle(frame, (vx1, vy1), (vx2, vy2), cor_vaga, 3)
         
-        cv2.rectangle(frame, (ax1, ay1), (ax2, ay2), (255, 0, 0), 2)
+        # Desenha o retângulo da área da placa
+        cv2.rectangle(frame, (ax1, ay1), (ax2, ay2), COR_AREA_PLACA, 2)
         cv2.putText(frame, "AREA PLACA", (ax1, ay1-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, COR_AREA_PLACA, 1)
         
-        cv2.rectangle(frame, (vx1, vy1-50), (vx1+220, vy1-10), (0,0,0), -1)
+        # Desenha o status da vaga (fundo preto para melhor contraste)
+        cv2.rectangle(frame, (vx1, vy1-30), (vx1+220, vy1-5), (0,0,0), -1) # Ajuste de altura para 30px
         cv2.putText(frame, f"Vaga {vaga['vaga']}: {status}", 
-                   (vx1+5, vy1-25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor_texto, 1)
+                   (vx1+5, vy1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor_texto, 1) # Ajuste de posição
         
-        if vaga["carro_parado"]:
-            cv2.putText(frame, "PARADO", (vx1, vy2+20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
-        elif vaga["ocupada"]:
-            cv2.putText(frame, "MOVIMENTO", (vx1, vy2+20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
+        # Remove os textos "PARADO" e "MOVIMENTO" abaixo da vaga para simplificar a tela
+        # if vaga["carro_parado"]:
+        #     cv2.putText(frame, "PARADO", (vx1, vy2+20), 
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+        # elif vaga["ocupada"]:
+        #     cv2.putText(frame, "MOVIMENTO", (vx1, vy2+20), 
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
+    
+    # Textos de cabeçalho (fundo preto para melhor contraste)
+    cv2.rectangle(frame, (0, 0), (CAMERA_WIDTH, 90), (0,0,0), -1)
     
     cv2.putText(frame, "ESTACIONAMENTO - Sistema Automatico", 
-               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
-    cv2.putText(frame, "Pressione 1,2,3 para simular entrada/saida", 
-               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
-    cv2.putText(frame, "Pressione ESPACO para releitura manual", 
-               (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COR_TEXTO_CLARO, 2)
+    cv2.putText(frame, "Pressione 1,2,3,4 para simular entrada/saida", 
+               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COR_TEXTO_CLARO, 1)
+    cv2.putText(frame, "Leitura automatica e simultanea de placas ativa", 
+               (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COR_TEXTO_CLARO, 1)
     
     cv2.imshow("Sistema de Estacionamento", frame)
     
@@ -525,16 +819,24 @@ while True:
     elif key == ord('r'):
         for vaga in vagas_map:
             vaga["placa_atual"] = None
-        print("🔄 Todas as placas resetadas manualmente")
-    elif key == ord(' '):
-        releitura_manual(1)
-    elif key in [ord('1'), ord('2'), ord('3')]:
-        vaga_num = int(chr(key))
-        vaga_index = vaga_num - 1
-        if 0 <= vaga_index < len(vagas_ocupadas_simulacao):
-            vagas_ocupadas_simulacao[vaga_index] = not vagas_ocupadas_simulacao[vaga_index]
-            status = "ENTROU" if vagas_ocupadas_simulacao[vaga_index] else "SAIU"
-            print(f"🎮 SIMULACAO: Carro {status} na Vaga {vaga_num}")
+            vaga["confianca_placa_atual"] = 0.0
+            vaga["notificacao_enviada"] = False
+            vaga["carro_parado"] = False
+            vaga["ocupada"] = False
+            atualizar_vaga_firestore(vaga, placa=None, ocupada=False, status='LIVRE')
+        print("🔄 Estado das vagas resetado.")
+    elif key == ord('1'):
+        vagas_ocupadas_simulacao[0] = not vagas_ocupadas_simulacao[0]
+        print(f"Simulação Vaga A1: {'OCUPADA' if vagas_ocupadas_simulacao[0] else 'LIVRE'}")
+    elif key == ord('2'):
+        vagas_ocupadas_simulacao[1] = not vagas_ocupadas_simulacao[1]
+        print(f"Simulação Vaga B1: {'OCUPADA' if vagas_ocupadas_simulacao[1] else 'LIVRE'}")
+    elif key == ord('3'):
+        vagas_ocupadas_simulacao[2] = not vagas_ocupadas_simulacao[2]
+        print(f"Simulação Vaga C1: {'OCUPADA' if vagas_ocupadas_simulacao[2] else 'LIVRE'}")
+    elif key == ord('4'):
+        vagas_ocupadas_simulacao[3] = not vagas_ocupadas_simulacao[3]
+        print(f"Simulação Vaga 4: {'OCUPADA' if vagas_ocupadas_simulacao[3] else 'LIVRE'}")
 
 cap.release()
 cv2.destroyAllWindows()
