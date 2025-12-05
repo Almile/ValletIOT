@@ -36,32 +36,32 @@ VAGAS_RELATIVAS = [
         "vaga": "A1", 
         "coords_rel": (50, 300, 270, 950),  # Aumentada de 200 para 220 (200+20) na largura
         "area_placa_rel": (50, 700, 270, 950),
-         "id_estacionamento": "OzBB12ZThIzzsD0JWZmI", 
-        "id_vaga_firestore": "Ls6mqldsHpQ6Gdb2hZ5x"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3", 
+        "id_vaga_firestore": "zQ5eg0oG72MGDa3BUwT2"
     },
     # Vaga 2: Aumentada em 20 e com espaçamento de 50 da anterior
     {
         "vaga": "B1", 
         "coords_rel": (320, 300, 540, 950),  # 270 + 50 = 320, aumentada para 220 de largura
         "area_placa_rel": (320, 700, 540, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "gv3ZxbC6OCldonAi6nhn"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "g0rVHsuSaWrpbkQGGwM1"
     },
     # Vaga 3: Aumentada em 20 e com espaçamento de 50 da anterior
     {
-        "vaga": "c1", 
+        "vaga": "C1", 
         "coords_rel": (590, 300, 810, 950),  # 540 + 50 = 590, aumentada para 220 de largura
         "area_placa_rel": (590, 700, 810, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "VJZpS5OHwTv3nRjZbF7r"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "G63wnmu77VTYm4tJq9i2"
     },
     # Vaga 4: Aumentada em 20 e com espaçamento de 50 da anterior
     {
-        "vaga": 4, 
+        "vaga": "D1", 
         "coords_rel": (860, 300, 950, 950),  # 810 + 50 = 860, ajustada para caber na tela
         "area_placa_rel": (860, 700, 950, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "D1"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "QenNjq5bEZKloWEqNIdD"
     }
 ]
 
@@ -911,6 +911,8 @@ def salvar_notificacao_admin_firestore(vaga, placa, usuario_id, tipo):
         
     except Exception as e:
         print(f"❌ Erro ao salvar notificação no Firestore: {e}")
+
+
 def verificar_usuarios_sem_token():
     """Verifica todos os usuários que não possuem token FCM"""
     try:
@@ -966,8 +968,8 @@ def teste_notificacao_admin():
     # Dados de teste
     vaga_teste = {
         'vaga': 'A1',
-        'id_vaga_firestore': 'Ls6mqldsHpQ6Gdb2hZ5x',
-        'id_estacionamento': 'OzBB12ZThIzzsD0JWZmI'
+        'id_vaga_firestore': 'zQ5eg0oG72MGDa3BUwT2',
+        'id_estacionamento': 'perS63z9MTjKZWRASKt3'
     }
     
     enviar_notificacoes(vaga_teste, 'TEST123')

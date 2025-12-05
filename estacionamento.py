@@ -36,32 +36,32 @@ VAGAS_RELATIVAS = [
         "vaga": "A1", 
         "coords_rel": (50, 300, 270, 950),  # Aumentada de 200 para 220 (200+20) na largura
         "area_placa_rel": (50, 700, 270, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI", 
-        "id_vaga_firestore": "Ls6mqldsHpQ6Gdb2hZ5x"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3", 
+        "id_vaga_firestore": "zQ5eg0oG72MGDa3BUwT2"
     },
     # Vaga 2: Aumentada em 20 e com espaçamento de 50 da anterior
     {
         "vaga": "B1", 
         "coords_rel": (320, 300, 540, 950),  # 270 + 50 = 320, aumentada para 220 de largura
         "area_placa_rel": (320, 700, 540, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "gv3ZxbC6OCldonAi6nhn"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "g0rVHsuSaWrpbkQGGwM1"
     },
     # Vaga 3: Aumentada em 20 e com espaçamento de 50 da anterior
     {
         "vaga": "C1", 
         "coords_rel": (590, 300, 810, 950),  # 540 + 50 = 590, aumentada para 220 de largura
         "area_placa_rel": (590, 700, 810, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "VJZpS5OHwTv3nRjZbF7r"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "G63wnmu77VTYm4tJq9i2"
     },
     # Vaga 4: Aumentada em 20 e com espaçamento de 50 da anterior
     {
         "vaga": "D1", 
         "coords_rel": (860, 300, 950, 950),  # 810 + 50 = 860, ajustada para caber na tela
         "area_placa_rel": (860, 700, 950, 950),
-        "id_estacionamento": "OzBB12ZThIzzsD0JWZmI",
-        "id_vaga_firestore": "D1"
+        "id_estacionamento": "perS63z9MTjKZWRASKt3",
+        "id_vaga_firestore": "QenNjq5bEZKloWEqNIdD"
     }
 ]
 
@@ -104,9 +104,10 @@ for vaga_rel in VAGAS_RELATIVAS:
     vagas_map.append(vaga_abs)
 
 for vaga in vagas_map:
-    vaga.update({
-        "placa_atual": None,
-        "ocupada": False,
+        vaga.update({
+            "placa_atual": None,
+            "placa_registrada": None, # NOVO: Placa que foi registrada no Firestore/notificada
+            "ocupada": False,
         "carro_parado": False,
         "historico_posicoes": deque(maxlen=10),
         "tempo_estacionado": 0,
@@ -621,10 +622,11 @@ def processar_vaga(vaga, carro_atual, frame_original):
         vaga["ocupada"] = True
         vaga["carro_parado"] = False
         vaga["placa_atual"] = None
+        vaga["placa_registrada"] = None # Reseta o estado da placa registrada
         vaga["tempo_estacionado"] = time.time()
         vaga["historico_posicoes"].clear()
         vaga["frames_sem_movimento"] = 0
-        vaga["notificacao_enviada"] = False
+        # vaga["notificacao_enviada"] = False # Removido, pois a lógica de controle é feita por placa_registrada
         vaga["confianca_placa_atual"] = 0.0
         vaga["ultima_deteccao_yolo"] = time.time()
         print(f"🚗 CARRO ENTROU na Vaga {vaga['vaga']}")
@@ -637,10 +639,11 @@ def processar_vaga(vaga, carro_atual, frame_original):
         vaga["ocupada"] = False
         vaga["carro_parado"] = False
         vaga["placa_atual"] = None
+        vaga["placa_registrada"] = None # Reseta o estado da placa registrada
         vaga["historico_posicoes"].clear()
         vaga["frames_sem_movimento"] = 0
         vaga["ultima_leitura"] = 0
-        vaga["notificacao_enviada"] = False
+        # vaga["notificacao_enviada"] = False # Removido, pois a lógica de controle é feita por placa_registrada
         vaga["confianca_placa_atual"] = 0.0
         vaga["frames_sem_deteccao"] = 0
         
@@ -665,7 +668,12 @@ def processar_vaga(vaga, carro_atual, frame_original):
             print(f"🚗 CARRO EM MOVIMENTO na Vaga {vaga['vaga']}")
             
         if vaga["carro_parado"]:
-            placa_lida, confianca = ler_placa_da_vaga(vaga, frame_original)
+            placa_lida = None
+            confianca = 0.0
+            
+            # 4. SÓ TENTA LER A PLACA SE AINDA NÃO TIVER SIDO REGISTRADA (TRAVADA)
+            if vaga.get("placa_registrada") is None:
+                placa_lida, confianca = ler_placa_da_vaga(vaga, frame_original)
             
             if placa_lida and confianca > vaga.get("confianca_placa_atual", 0.0):
                 placa_tratada = tratar_placa(placa_lida)
@@ -676,11 +684,34 @@ def processar_vaga(vaga, carro_atual, frame_original):
                 
                 print(f"✅ PLACA ATUALIZADA - Vaga {vaga['vaga']}: {placa_tratada} (Confiança: {confianca:.2f})")
                 
-                atualizar_vaga_firestore(vaga, placa=placa_tratada)
+                # --- LÓGICA DE CONTROLE DE ATUALIZAÇÃO E NOTIFICAÇÃO ---
+                # A atualização e notificação só devem ocorrer se a placa lida for diferente
+                # da última placa que foi registrada no Firestore (placa_registrada).
                 
-                if not vaga["notificacao_enviada"]:
+                placa_registrada_anterior = vaga.get("placa_registrada")
+                
+                # A placa só será registrada (e a notificação enviada) se ainda não houver uma placa registrada.
+                if placa_registrada_anterior is None:
+                    # 1. Atualiza o estado local e no Firestore
+                    vaga["placa_registrada"] = placa_tratada # Registra a placa (TRAVA)
+                    vaga["placa_atual"] = placa_tratada
+                    vaga["confianca_placa_atual"] = confianca
+                    
+                    print(f"✅ PLACA REGISTRADA (PRIMEIRA LEITURA) - Vaga {vaga['vaga']}: {placa_tratada} (Confiança: {confianca:.2f})")
+                    
+                    atualizar_vaga_firestore(vaga, placa=placa_tratada)
+                    
+                    # 2. Envia notificação (apenas uma vez)
                     print(f"🔔 Disparando notificações para placa {placa_tratada}")
                     enviar_notificacoes(vaga, placa_tratada)
+                    
+                else:
+                    # A placa já está registrada/travada.
+                    # Apenas atualiza a placa local e a confiança se a nova leitura for melhor,
+                    # mas NÃO atualiza o Firestore nem envia notificação.
+                    vaga["placa_atual"] = placa_tratada
+                    vaga["confianca_placa_atual"] = confianca
+                    print(f"🔄 PLACA TRAVADA - Vaga {vaga['vaga']}: {placa_registrada_anterior} (Lida: {placa_tratada}, Confiança: {confianca:.2f}) - Ignorando atualização/notificação.")
 
 def enviar_notificacoes(vaga, placa_tratada):
     """Função separada para envio de notificações"""
@@ -689,6 +720,8 @@ def enviar_notificacoes(vaga, placa_tratada):
         token_admin = buscar_token_admin(vaga['id_estacionamento'])
         
         print(f"🔔 Tentando enviar notificações para placa {placa_tratada}")
+        print(f"📞 Token Admin: {token_admin}")
+        print(f"📞 Token Motorista: {token_motorista}")
         
         # Notificação para o Motorista
         notificacao_enviada = False
@@ -710,16 +743,18 @@ def enviar_notificacoes(vaga, placa_tratada):
             )
             
             if sucesso:
-                notificacao_enviada = True
-                vaga["notificacao_enviada"] = True
-                print(f"✅ Notificação enviada com sucesso para o motorista")
+                    notificacao_enviada = True
+                    # A flag vaga["notificacao_enviada"] não é mais usada para controle de repetição,
+                    # pois a lógica principal é feita por placa_registrada.
+                    print(f"✅ Notificação enviada com sucesso para o motorista")
             else:
                 print(f"🔄 Token inválido detectado, removendo...")
                 remover_token_invalido(placa_tratada)
         else:
             print(f"⚠️  Token do motorista não encontrado para {placa_tratada}")
 
-        # Notificação para o Administrador
+        # 🔥 **CORREÇÃO CRÍTICA: Notificação para o Administrador**
+        # Esta parte estava dentro do if do motorista, mas deve ser separada
         if token_admin:
             print(f"👨‍💼 Enviando notificação para admin...")
             
@@ -737,6 +772,7 @@ def enviar_notificacoes(vaga, placa_tratada):
                 corpo = f"Veículo {placa_tratada} estacionou na Vaga {vaga['vaga']}."
                 tipo_notificacao = 'estacionamento'
             
+            # 🔥 **ENVIA NOTIFICAÇÃO PARA O ADMIN SEMPRE QUE UM CARRO ESTACIONA**
             sucesso_admin = disparar_evento_estacionamento(
                 token_fcm_usuario=token_admin,
                 titulo=titulo,
@@ -752,6 +788,10 @@ def enviar_notificacoes(vaga, placa_tratada):
             
             if sucesso_admin:
                 print(f"✅ Notificação enviada para o administrador")
+                # 🔥 **SALVA NO FIRESTORE PARA O DJANGO BUSCAR**
+                salvar_notificacao_admin_firestore(vaga, placa_tratada, uid_motorista, tipo_notificacao)
+            else:
+                print(f"❌ Falha ao enviar notificação para admin")
         
         return notificacao_enviada
         
@@ -759,6 +799,33 @@ def enviar_notificacoes(vaga, placa_tratada):
         print(f"❌ Erro em enviar_notificacoes: {e}")
         return False
 
+def salvar_notificacao_admin_firestore(vaga, placa, usuario_id, tipo):
+    """Salva notificação no Firestore para o Django sincronizar"""
+    try:
+        from datetime import datetime
+        import firebase_admin
+        from firebase_admin import firestore
+        
+        db = firestore.client()
+        
+        notificacao_data = {
+            'vagaId': vaga['id_vaga_firestore'],
+            'placa': placa,
+            'usuarioId': usuario_id or 'desconhecido',
+            'motivo': f"Veículo {placa} estacionou na Vaga {vaga['vaga']}",
+            'timestamp': datetime.now(),
+            'tipo': 'sistema_alerta_estacionamento',
+            'vagaNumero': vaga['vaga'],
+            'estacionamentoId': vaga['id_estacionamento']
+        }
+        
+        # Adiciona à coleção notificacoes_admin
+        db.collection('notificacoes_admin').add(notificacao_data)
+        print(f"📝 Notificação salva no Firestore para admin: {placa} na Vaga {vaga['vaga']}")
+        
+    except Exception as e:
+        print(f"❌ Erro ao salvar notificação no Firestore: {e}")
+ 
 # Cores em BGR
 COR_LIVRE = (0, 100, 0) # Verde Escuro
 COR_OCUPADA_PARADA_PLACA = (0, 0, 150) # Vermelho Escuro
@@ -882,7 +949,7 @@ while True:
         for vaga in vagas_map:
             vaga["placa_atual"] = None
             vaga["confianca_placa_atual"] = 0.0
-            vaga["notificacao_enviada"] = False
+            # vaga["notificacao_enviada"] = False # Removido, pois a lógica de controle é feita por placa_registrada
             vaga["carro_parado"] = False
             vaga["ocupada"] = False
             vaga["frames_sem_deteccao"] = 0
