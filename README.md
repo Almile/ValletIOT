@@ -1,3 +1,20 @@
+# ValletWeb - Versão IOT
+<img align="right" src="https://github.com/user-attachments/assets/fee4e949-8803-41e0-b21e-f68f17017f75" alt="logo vallet" width="25%" />
+
+
+<a href="https://git.io/typing-svg"><img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=24&pause=1000&color=4CAF50&width=600&height=55&lines=Sistema+de+Gest%C3%A3o+de+Estacionamentos" alt="Typing SVG" /></a>
+
+<p>
+Seja bem-vindo ao projeto <b>Vallet</b>, um aplicativo Android e plataforma web, seguindo a arquitetura MVVM (Model-View-ViewModel) e com integração total ao Firebase.
+Ele busca otimizar o processo de <b>reserva, monitoramento e administração de vagas de estacionamento,</b> beneficiando tanto motoristas quanto os administradores de estacionamentos.
+</p>
+
+<p>Este repositório inclui as funções para gestor de estacionamento com dashboards e controle de vagas completo.<br> Caso queira acessar a versão para app android, acesse esse repositório: https://github.com/lariiscriis/ValletProjeto</p>
+
+Caso queira acessar a versão para gestor de estacionamento com dashboards e controle de vagas, acesse esse repositório: https://github.com/Pereira-Sah/ValletWeb</p
+<br><br>
+
+
 # 🚗 Sistema de Estacionamento Inteligente com OCR (EasyOCR + OpenCV)
 
 Este projeto detecta vagas de estacionamento, identifica carros, verifica se estão parados e realiza a **leitura automática da placa** utilizando **visão computacional e OCR**.
