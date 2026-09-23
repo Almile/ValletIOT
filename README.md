@@ -53,6 +53,20 @@ git clone https://github.com/almile/ValletIOT.git
 cd ValletIOT
 ```
 
+
+### 1. Criar o ambiente virtual
+```bash
+python -m venv venv
+```
+
+### 2. Ativar o ambiente
+```bash
+# Windows: 
+venv\Scripts\activate
+# Linux/Mac: 
+source venv/bin/activate
+```
+
 ### ✅ 2. Instale as dependências
 
 ```bash
