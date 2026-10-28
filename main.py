@@ -45,7 +45,6 @@ def main():
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
-    print("\n✅ Sistema IoT de Visão Computacional Iniciado (MODO AUTOMÁTICO)!")
     print("👉 O sistema está buscando veículos e placas automaticamente.")
     print("👉 Pressione 'q' para encerrar.\n")
 
@@ -83,7 +82,7 @@ def main():
             vx1, vy1, vx2, vy2 = vaga["coords"]
             ax1, ay1, ax2, ay2 = vaga["area_placa"]
 
-            cor = (0, 0, 255) if vaga["ocupada"] else (0, 255, 0)
+            cor = (130, 95, 95) if vaga["ocupada"] else (59, 80, 66)
             
             # Ajuste inteligente do texto da interface
             if vaga["placa_atual"]:

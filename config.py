@@ -1,34 +1,33 @@
 # --- CONFIGURAÇÕES DO SISTEMA ---
 API_URL = "http://localhost:8000/camera/api/v1/eventos/placa-detectada"
-CAMERA_WIDTH = 800
+CAMERA_WIDTH = 1000
 CAMERA_HEIGHT = 450
 
-# Coordenadas relativas das vagas (0-1000)
 VAGAS_RELATIVAS = [
     {
         "vaga": "A1", 
-        "coords_rel": (50, 300, 270, 950),
+        "coords_rel": (20, 300, 220, 950),
         "area_placa_rel": (50, 700, 270, 950),
         "id_estacionamento": "perS63z9MTjKZWRASKt3", 
         "id_vaga_firestore": "zQ5eg0oG72MGDa3BUwT2"
     },
     {
         "vaga": "B1", 
-        "coords_rel": (320, 300, 540, 950),
+        "coords_rel": (240, 300, 460, 950),
         "area_placa_rel": (320, 700, 540, 950),
         "id_estacionamento": "perS63z9MTjKZWRASKt3",
         "id_vaga_firestore": "g0rVHsuSaWrpbkQGGwM1"
     },
     {
         "vaga": "C1", 
-        "coords_rel": (590, 300, 810, 950),
+        "coords_rel": (480, 300, 700, 950),
         "area_placa_rel": (590, 700, 810, 950),
         "id_estacionamento": "perS63z9MTjKZWRASKt3",
         "id_vaga_firestore": "G63wnmu77VTYm4tJq9i2"
     },
     {
         "vaga": "D1", 
-        "coords_rel": (860, 300, 950, 950),
+        "coords_rel": (720, 300, 940, 950),
         "area_placa_rel": (860, 700, 950, 950),
         "id_estacionamento": "perS63z9MTjKZWRASKt3",
         "id_vaga_firestore": "QenNjq5bEZKloWEqNIdD"
