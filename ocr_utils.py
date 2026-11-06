@@ -3,7 +3,7 @@ import easyocr
 import re
 import threading
 from collections import Counter, deque
-from api_client import enviar_placa_para_api
+from api_client import enviar_saida_para_api, enviar_placa_para_api
 from ultralytics import YOLO
 import numpy as np
 from config import (CONFIRMAR_OCUPADA, CONFIRMAR_LIVRE, YOLO_CLASSES, YOLO_CONF,
@@ -107,11 +107,18 @@ def _miniatura(crop):
     return cv2.resize(g, (32, 16)).astype("float32")
 
 def _liberar(vaga_info):
-    if vaga_info["placa_atual"]:
-        placas_em_uso.pop(vaga_info["placa_atual"], None)
-        print(f"🚪 Vaga {vaga_info['vaga']} liberada.")
+    placa = vaga_info["placa_atual"]
+    if placa:
+        placas_em_uso.pop(placa, None)
+        enviar_saida_para_api({
+            "id_estacionamento": vaga_info["id_estacionamento"],
+            "id_vaga": vaga_info["id_vaga_firestore"],
+            "numero_vaga": vaga_info["vaga"],
+            "placa": placa,
+        })
+        print(f"🚪 Vaga {vaga_info['vaga']} liberada (saída de {placa}).")
     vaga_info.update({"ocupada": False, "placa_atual": None, "ref_placa": None,
-                      "ausencias": 0, "deteccoes": 0})
+                      "caixa_placa": None, "ausencias": 0, "deteccoes": 0})
     vaga_info["candidatas"].clear()
 
 

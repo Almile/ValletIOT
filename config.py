@@ -1,6 +1,17 @@
 import json, os
 
-API_URL = "http://localhost:8000/camera/api/v1/eventos/placa-detectada"
+API_BASE = "http://localhost:8000/camera/api/v1/eventos"
+API_URL = f"{API_BASE}/placa-detectada"
+API_URL_SAIDA = f"{API_BASE}/saida-detectada"
+API_URL_ALERTA = f"{API_BASE}/alerta-sistema"
+API_URL_HEARTBEAT = f"{API_BASE}/heartbeat"
+
+HEARTBEAT_INTERVALO_S = 30
+OBSTRUCAO_SEGUNDOS = 10
+OBSTRUCAO_COOLDOWN_S = 600
+OBSTRUCAO_BRILHO_MIN = 25
+OBSTRUCAO_NITIDEZ_MIN = 15
+
 # Mesma proporção da webcam (4:3) para não distorcer o texto.
 # Se a sua câmera for 16:9, use 1280 x 720.
 CAMERA_WIDTH = 848
@@ -61,6 +72,8 @@ VAGAS_RELATIVAS = [
 #         if _v["vaga"] in _cal:
 #             _v["coords_rel"] = tuple(_cal[_v["vaga"]]["coords_rel"])
 #             _v["area_placa_rel"] = tuple(_cal[_v["vaga"]]["area_placa_rel"])
+
+ID_ESTACIONAMENTO = VAGAS_RELATIVAS[0]["id_estacionamento"]
 
 def map_coords(coords_rel, width, height):
     """Converte coordenadas relativas (0-1000) em pixels da tela."""
