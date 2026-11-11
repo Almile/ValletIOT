@@ -53,15 +53,16 @@ OCR_CONF_MIN = 0.30
 
 PLACA_CONFIRMA_OCUPACAO = True
 CONFIRMAR_OCUPADA = 2
+
 VAGAS_RELATIVAS = [
-    {"vaga": "A1", "coords_rel": (40, 250, 255, 920),  "area_placa_rel": (40, 680, 255, 920),
-     "id_estacionamento": "perS63z9MTjKZWRASKt3", "id_vaga_firestore": "zQ5eg0oG72MGDa3BUwT2"},
-    {"vaga": "B1", "coords_rel": (275, 250, 490, 920), "area_placa_rel": (275, 680, 490, 920),
-     "id_estacionamento": "perS63z9MTjKZWRASKt3", "id_vaga_firestore": "g0rVHsuSaWrpbkQGGwM1"},
-    {"vaga": "C1", "coords_rel": (510, 250, 725, 920), "area_placa_rel": (510, 680, 725, 920),
-     "id_estacionamento": "perS63z9MTjKZWRASKt3", "id_vaga_firestore": "G63wnmu77VTYm4tJq9i2"},
-    {"vaga": "D1", "coords_rel": (745, 250, 960, 920), "area_placa_rel": (745, 680, 960, 920),
-     "id_estacionamento": "perS63z9MTjKZWRASKt3", "id_vaga_firestore": "QenNjq5bEZKloWEqNIdD"},
+    {"vaga": "A-1", "coords_rel": (40, 250, 255, 920),  "area_placa_rel": (40, 680, 255, 920),
+     "id_estacionamento": "AepP9oc0sK1ZOeboKUVM", "id_vaga_firestore": "NlnwGiPmSbW4Jd6GrhdG"},
+    {"vaga": "A-2", "coords_rel": (275, 250, 490, 920), "area_placa_rel": (275, 680, 490, 920),
+     "id_estacionamento": "AepP9oc0sK1ZOeboKUVM", "id_vaga_firestore": "S68iDXJ6YEOHecx7TIjA"},
+    {"vaga": "A-3", "coords_rel": (510, 250, 725, 920), "area_placa_rel": (510, 680, 725, 920),
+     "id_estacionamento": "AepP9oc0sK1ZOeboKUVM", "id_vaga_firestore": "idRFtsgV1kQG2WCirMR8"},
+    {"vaga": "A-4", "coords_rel": (745, 250, 960, 920), "area_placa_rel": (745, 680, 960, 920),
+     "id_estacionamento": "AepP9oc0sK1ZOeboKUVM", "id_vaga_firestore": "in5QEeGVmN89FlFzNn28"},
 ]
 
 # _ARQ_CALIBRACAO = os.path.join(os.path.dirname(__file__), "vagas.json")
