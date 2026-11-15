@@ -1,6 +1,6 @@
 import json, os
 
-API_BASE = "http://localhost:8000/camera/api/v1/eventos"
+API_BASE = "http://localhost:8000/camera"
 API_URL = f"{API_BASE}/placa-detectada"
 API_URL_SAIDA = f"{API_BASE}/saida-detectada"
 API_URL_ALERTA = f"{API_BASE}/alerta-sistema"
