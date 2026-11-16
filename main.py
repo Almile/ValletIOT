@@ -8,9 +8,7 @@ from ui import desenhar_interface
 import time
 from api_client import (iniciar_worker_api, iniciar_heartbeat, enviar_alerta_para_api, aguardar_envios)
 from monitor import MonitorObstrucao
-from frame_buffer import FrameBuffer
-frame_buffer = FrameBuffer() 
-
+from frame_buffer import frame_buffer 
 import threading
 from stream_server import app as flask_app
 
