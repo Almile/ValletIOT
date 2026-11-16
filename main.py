@@ -8,6 +8,11 @@ from ui import desenhar_interface
 import time
 from api_client import (iniciar_worker_api, iniciar_heartbeat, enviar_alerta_para_api, aguardar_envios)
 from monitor import MonitorObstrucao
+from frame_buffer import FrameBuffer
+frame_buffer = FrameBuffer() 
+
+import threading
+from stream_server import app as flask_app
 
 vagas_map = []
 for vaga_rel in VAGAS_RELATIVAS:
@@ -39,7 +44,12 @@ def obter_camera():
     return None
 
 
+def rodar_flask():
+    flask_app.run(host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
+    
+
 def main():
+    threading.Thread(target=rodar_flask, daemon=True).start()
     iniciar_worker_api()
     estado = {"ultimo_frame": time.time()}
     iniciar_heartbeat(lambda: estado["ultimo_frame"])
@@ -73,17 +83,16 @@ def main():
         else:
             ret, frame = cap.read()
             if not ret:
-                print("⚠️ Falha ao ler frame da câmera.")
                 enviar_alerta_para_api("sistema_erro", "O leitor perdeu a conexão com a câmera.")
                 break
             frame = cv2.resize(frame, (CAMERA_WIDTH, CAMERA_HEIGHT))
 
         estado["ultimo_frame"] = time.time()
         frame_count += 1
+
         if frame_count % 5 == 0 and not usando_camera_virtual:
             monitor.verificar(frame)
         frame_original = frame.copy()
-
         for vaga in vagas_map:
             if frame_count % CHECK_EVERY_N_FRAMES == 0 and not vaga["processando_ocr"]:
                 vx1, vy1, vx2, vy2 = vaga["coords"]
@@ -93,6 +102,7 @@ def main():
                 processar_ocr_e_enviar(crop_vaga, crop_placa, vaga)
 
         desenhar_interface(frame, vagas_map)
+        frame_buffer.atualizar(frame)
         cv2.imshow(JANELA, frame)
 
         if cv2.waitKey(30) & 0xFF == ord('q'):
